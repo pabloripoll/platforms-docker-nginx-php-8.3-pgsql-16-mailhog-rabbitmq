@@ -1,6 +1,6 @@
 <div id="top-header" style="with:100%;height:auto;text-align:right;"></div>
 
-# POSTGRE 16.4
+# POSTGRE 16
 
 - [./back](../../README.md)
 - [Features](#features)
@@ -14,12 +14,13 @@
 ![PostgreSQL](https://img.shields.io/badge/postgresql-4169e1?style=for-the-badge&logo=postgresql&logoColor=white)
 
 Content:
-- Linux Alpine 3.23
-- PostgreSQL 16.4
+- Linux Alpine 3.24
+- PostgreSQL 16
 <br><br>
 
 Sources:
 - https://github.com/docker-library/postgres
+- https://github.com/docker-library/postgres/tree/master/16/alpine3.24
 
 ### Maintained by: [the PostgreSQL Docker Community](https://github.com/docker-library/postgres)
 
@@ -48,14 +49,14 @@ Require environment variables at `./docker/.env` *(all are customizable)*:
 ```bash
 COMPOSE_PROJECT_LEAD="myproj"                           # <- lead abbreviation or acronym as part of related containers naming rule -------------------------> #
 COMPOSE_PROJECT_CNET="mp-dev"                           # <- useful for networking to connect between containers --------------------------------------------> #
-COMPOSE_PROJECT_IMGK="alpine3.23-pgsql-16.4"            # <- real main image keys to manage automations for sharing resources -------------------------------> #
-COMPOSE_PROJECT_NAME="mp-mariadb-dev"                   # <- container name to build the service - it is important to set the environment in this variable --> #
+COMPOSE_PROJECT_IMGK="alpine-3.24-pgsql-16"             # <- real main image keys to manage automations for sharing resources -------------------------------> #
+COMPOSE_PROJECT_NAME="mp-pgsql-dev"                     # <- container name to build the service - it is important to set the environment in this variable --> #
 COMPOSE_PROJECT_HOST="127.0.0.1"                        # <- machine hostname referrer - not necessary for this project -------------------------------------> #
 COMPOSE_PROJECT_PORT=7710                               # <- local machine port opened for container service ------------------------------------------------> #
 COMPOSE_PROJECT_CPUS="2.00"                             # <- container's maximum CPUs usage to apply by docker-compose - leave it empty for full usage ------> #
-COMPOSE_PROJECT_MEM="256M"                              # <- container's maximum RAM usage to apply by docker-compose ---------------------------------------> #
-COMPOSE_PROJECT_SWAP="512M"                             # <- container's RAM swap space in storage executed by automation command ---------------------------> #
-MARIADB_ROOT_PASSWORD="root-strong-password"            # <- database root password -------------------------------------------------------------------------> #
+COMPOSE_PROJECT_MEM="128M"                              # <- container's maximum RAM usage to apply by docker-compose ---------------------------------------> #
+COMPOSE_PROJECT_SWAP="256M"                             # <- container's RAM swap space in storage executed by automation command ---------------------------> #
+POSTGRES_ROOT_PASSWORD="root-strong-password"           # <- database root password -------------------------------------------------------------------------> #
 POSTGRES_DATABASE="dev_local"                           # <- database name ----------------------------------------------------------------------------------> #
 POSTGRES_USER="dev_user"                                # <- database user ----------------------------------------------------------------------------------> #
 POSTGRES_PASSWORD="dev-password"                        # <- database password ------------------------------------------------------------------------------> #
@@ -123,6 +124,17 @@ $ make remote-host-copy               copies referenced remote database by tcp c
 $ make remote-file-copy               copies referenced remote database file into /[dir-path]/[file-name].sql for local development
 ```
 <br>
+
+See database version
+```bash
+$ make db-ssh
+
+> cat /etc/os-release # see linux alpine version
+
+> psql --version # see postgre version
+```
+<br><br>
+
 
 ## Contributing
 

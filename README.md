@@ -8,7 +8,7 @@
 [![Open Source? Yes!](https://badgen.net/badge/Open%20Source%20%3F/Yes%21/blue?icon=github)](./)
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-# PHP 8.3 + MariaDB 10.11 + MailHog 1.0 + RabbitMQ 4.2
+# PHP 8.3 + Postgre 16 + MailHog 1.0 + RabbitMQ 4.2
 <br>
 
 This Infrastructure Platform repository is designed for back-end projects and provides three separate platforms:
@@ -16,7 +16,7 @@ This Infrastructure Platform repository is designed for back-end projects and pr
 ## Platforms for Full-Stack Project
 
 - API: [NGINX + PHP 8.3](./platforms/nginx-php-8.3/README.md)
-- Database: [Postgres 16.4](./platforms/pgsql-16.4/README.md)
+- Database: [Postgres 16](./platforms/pgsql-16/README.md)
 - Mail Service: [Mail Hog 1.0](./platforms/mailhog-1.0/README.md)
 - Message Broker: [RabbitMQ 4.2](./platforms/rabbitmq-4.2/README.md)
 <br><br>
@@ -74,6 +74,8 @@ By leveraging Platform Engineering principles, this project reduces cognitive lo
 ## <a id="requirements"></a>Requirements
 
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
+![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
+![MacOS](https://img.shields.io/badge/MacOS-f0f0f0?logo=apple&logoColor=black&style=for-the-badge)
 ![gnu](https://img.shields.io/badge/gnu-%23A42E2B.svg?style=for-the-badge&logo=gnu&logoColor=white)
 ![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
 
@@ -217,7 +219,7 @@ Repository directories structure overview
 │   │   │   └── Dockerfile
 │   │   └── Makefile
 │   │
-│   ├── mariadb-10.11
+│   ├── postgre-18
 │   │   ├── docker
 │   │   │   ├── .env
 │   │   │   ├── docker-compose.yml

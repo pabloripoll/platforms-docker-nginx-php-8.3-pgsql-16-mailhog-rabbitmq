@@ -103,24 +103,6 @@ docker_init_database_dir() {
 # print large warning if POSTGRES_HOST_AUTH_METHOD is set to 'trust'
 # assumes database is not set up, ie: [ -z "$DATABASE_ALREADY_EXISTS" ]
 docker_verify_minimum_env() {
-	case "${PG_MAJOR:-}" in
-		12 | 13) # https://github.com/postgres/postgres/commit/67a472d71c98c3d2fa322a1b4013080b20720b98
-			# check password first so we can output the warning before postgres
-			# messes it up
-			if [ "${#POSTGRES_PASSWORD}" -ge 100 ]; then
-				cat >&2 <<-'EOWARN'
-
-					WARNING: The supplied POSTGRES_PASSWORD is 100+ characters.
-
-					  This will not work if used via PGPASSWORD with "psql".
-
-					  https://www.postgresql.org/message-id/flat/E1Rqxp2-0004Qt-PL%40wrigleys.postgresql.org (BUG #6412)
-					  https://github.com/docker-library/postgres/issues/507
-
-				EOWARN
-			fi
-			;;
-	esac
 	if [ -z "$POSTGRES_PASSWORD" ] && [ 'trust' != "$POSTGRES_HOST_AUTH_METHOD" ]; then
 		# The - option suppresses leading tabs but *not* spaces. :)
 		cat >&2 <<-'EOE'
@@ -152,6 +134,35 @@ docker_verify_minimum_env() {
 			         "docker run".
 			********************************************************************************
 		EOWARN
+	fi
+}
+# similar to the above, but errors if there are any "old" databases detected (usually due to upgrades without pg_upgrade)
+docker_error_old_databases() {
+	if [ -n "${OLD_DATABASES[0]:-}" ]; then
+		cat >&2 <<-EOE
+			Error: in 18+, these Docker images are configured to store database data in a
+			       format which is compatible with "pg_ctlcluster" (specifically, using
+			       major-version-specific directory names).  This better reflects how
+			       PostgreSQL itself works, and how upgrades are to be performed.
+
+			       See also https://github.com/docker-library/postgres/pull/1259
+
+			       Counter to that, there appears to be PostgreSQL data in:
+			         ${OLD_DATABASES[*]}
+
+			       This is usually the result of upgrading the Docker image without
+			       upgrading the underlying database using "pg_upgrade" (which requires both
+			       versions).
+
+			       The suggested container configuration for 18+ is to place a single mount
+			       at /var/lib/postgresql which will then place PostgreSQL data in a
+			       subdirectory, allowing usage of "pg_upgrade --link" without mount point
+			       boundary issues.
+
+			       See https://github.com/docker-library/postgres/issues/37 for a (long)
+			       discussion around this process, and suggestions for how to do so.
+		EOE
+		exit 1
 	fi
 }
 
@@ -230,9 +241,25 @@ docker_setup_env() {
 
 	declare -g DATABASE_ALREADY_EXISTS
 	: "${DATABASE_ALREADY_EXISTS:=}"
+	declare -ag OLD_DATABASES=()
 	# look specifically for PG_VERSION, as it is expected in the DB dir
 	if [ -s "$PGDATA/PG_VERSION" ]; then
 		DATABASE_ALREADY_EXISTS='true'
+	elif [ "$PGDATA" = "/var/lib/postgresql/$PG_MAJOR/docker" ]; then
+		# https://github.com/docker-library/postgres/pull/1259
+		for d in /var/lib/postgresql /var/lib/postgresql/data /var/lib/postgresql/*/docker; do
+			if [ -s "$d/PG_VERSION" ]; then
+				OLD_DATABASES+=( "$d" )
+			fi
+		done
+		if [ "${#OLD_DATABASES[@]}" -eq 0 ] && [ "$PG_MAJOR" -ge 18 ] && {
+			# in BusyBox, "mountpoint" only checks dev vs ino (https://github.com/tianon/mirror-busybox/blob/be7d1b7b1701d225379bc1665487ed0871b592a5/util-linux/mountpoint.c#L78) which will notably miss bind mounts entirely (which almost all Docker volume mounts are)
+			# coreutils checks /proc/self/mountinfo, so we have a fallback to mimic that and directly check "/proc/self/mountinfo" to catch that case
+			mountpoint -q /var/lib/postgresql/data \
+			|| awk '$5 == "/var/lib/postgresql/data" { found = 1 } END { exit !found }' /proc/self/mountinfo
+		}; then
+			OLD_DATABASES+=( '/var/lib/postgresql/data (unused mount/volume)' )
+		fi
 	fi
 }
 
@@ -252,7 +279,7 @@ pg_setup_hba_conf() {
 		printf '\n'
 		if [ 'trust' = "$POSTGRES_HOST_AUTH_METHOD" ]; then
 			printf '# warning trust is enabled for all connections\n'
-			printf '# see https://www.postgresql.org/docs/12/auth-trust.html\n'
+			printf '# see https://www.postgresql.org/docs/17/auth-trust.html\n'
 		fi
 		printf 'host all all all %s\n' "$POSTGRES_HOST_AUTH_METHOD"
 	} >> "$PGDATA/pg_hba.conf"
@@ -269,6 +296,9 @@ docker_temp_server_start() {
 	# does not listen on external TCP/IP and waits until start finishes
 	set -- "$@" -c listen_addresses='' -p "${PGPORT:-5432}"
 
+	# unset NOTIFY_SOCKET so the temporary server doesn't prematurely notify
+	# any process supervisor.
+	NOTIFY_SOCKET= \
 	PGUSER="${PGUSER:-$POSTGRES_USER}" \
 	pg_ctl -D "$PGDATA" \
 		-o "$(printf '%q ' "$@")" \
@@ -316,6 +346,7 @@ _main() {
 		# only run initialization on an empty data directory
 		if [ -z "$DATABASE_ALREADY_EXISTS" ]; then
 			docker_verify_minimum_env
+			docker_error_old_databases
 
 			# check dir permissions to reduce likelihood of half-initialized database
 			ls /docker-entrypoint-initdb.d/ > /dev/null

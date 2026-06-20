@@ -4,10 +4,10 @@
 # PLEASE DO NOT EDIT IT DIRECTLY.
 #
 
-FROM alpine:3.20
+FROM alpine:3.24
 
 # 70 is the standard uid/gid for "postgres" in Alpine
-# https://git.alpinelinux.org/aports/tree/main/postgresql/postgresql.pre-install?h=3.12-stable
+# https://git.alpinelinux.org/aports/tree/main/postgresql-common/postgresql-common.pre-install?h=3.22-stable
 RUN set -eux; \
 	addgroup -g 70 -S postgres; \
 	adduser -u 70 -S -D -G postgres -H -h /var/lib/postgresql -s /bin/sh postgres; \
@@ -17,7 +17,7 @@ RUN set -eux; \
 
 # grab gosu for easy step-down from root
 # https://github.com/tianon/gosu/releases
-ENV GOSU_VERSION 1.17
+ENV GOSU_VERSION 1.19
 RUN set -eux; \
 	\
 	apk add --no-cache --virtual .gosu-deps \
@@ -53,12 +53,12 @@ ENV LANG en_US.utf8
 RUN mkdir /docker-entrypoint-initdb.d
 
 ENV PG_MAJOR 16
-ENV PG_VERSION 16.4
-ENV PG_SHA256 971766d645aa73e93b9ef4e3be44201b4f45b5477095b049125403f9f3386d6f
+ENV PG_VERSION 16.14
+ENV PG_SHA256 f6d077142737920858ce958ccdb75c6ee137a63b5b0853c70693d401ac7e3471
 
 ENV DOCKER_PG_LLVM_DEPS \
-		llvm15-dev \
-		clang15
+		llvm21-dev \
+		clang21
 
 RUN set -eux; \
 	\
@@ -112,17 +112,14 @@ RUN set -eux; \
 	grep '/var/run/postgresql' src/include/pg_config_manual.h.new; \
 	mv src/include/pg_config_manual.h.new src/include/pg_config_manual.h; \
 	gnuArch="$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)"; \
-# explicitly update autoconf config.guess and config.sub so they support more arches/libcs
-	wget -O config/config.guess 'https://git.savannah.gnu.org/cgit/config.git/plain/config.guess?id=7d3d27baf8107b630586c962c057e22149653deb'; \
-	wget -O config/config.sub 'https://git.savannah.gnu.org/cgit/config.git/plain/config.sub?id=7d3d27baf8107b630586c962c057e22149653deb'; \
 	\
-# https://git.alpinelinux.org/aports/tree/community/postgresql12/APKBUILD?h=3.18-stable&id=a470294e6d6ca7059e41c54769b7c3c26ec901d4#n158
-	export LLVM_CONFIG="/usr/lib/llvm15/bin/llvm-config"; \
-# https://git.alpinelinux.org/aports/tree/community/postgresql12/APKBUILD?h=3.18-stable&id=a470294e6d6ca7059e41c54769b7c3c26ec901d4#n163
-	export CLANG=clang-15; \
+# https://git.alpinelinux.org/aports/tree/community/postgresql15/APKBUILD?h=3.22-stable#n176 ("export LLVM_CONFIG")
+	export LLVM_CONFIG="/usr/lib/llvm21/bin/llvm-config"; \
+# https://git.alpinelinux.org/aports/tree/community/postgresql15/APKBUILD?h=3.22-stable#n180 ("older clang versions don't have a 'clang' exe anymore.")
+	export CLANG=clang-21; \
 	\
-# configure options taken from:
-# https://anonscm.debian.org/cgit/pkg-postgresql/postgresql.git/tree/debian/rules?h=9.5
+# configure options mostly copying Debian:
+# https://salsa.debian.org/postgresql/postgresql-common/-/blob/6e26b5107295170cc8731a3acbf13228ea15941e/server/postgresql.mk#L32
 	./configure \
 		--enable-option-checking=fatal \
 		--build="$gnuArch" \
@@ -141,17 +138,17 @@ RUN set -eux; \
 		--with-includes=/usr/local/include \
 		--with-libraries=/usr/local/lib \
 		--with-gssapi \
+		--with-icu \
 		--with-ldap \
-		--with-tcl \
-		--with-perl \
-		--with-python \
-#		--with-pam \
-		--with-openssl \
 		--with-libxml \
 		--with-libxslt \
-		--with-icu \
 		--with-llvm \
 		--with-lz4 \
+		--with-openssl \
+#		--with-pam \
+		--with-perl \
+		--with-python \
+		--with-tcl \
 		--with-zstd \
 	; \
 	make -j "$(nproc)" world-bin; \
@@ -174,8 +171,7 @@ RUN set -eux; \
 		zstd \
 # https://wiki.alpinelinux.org/wiki/Release_Notes_for_Alpine_3.16.0#ICU_data_split
 		icu-data-full \
-# nss_wrapper is not availble on ppc64le: "test case segfaults in ppc64le"
-# https://git.alpinelinux.org/aports/commit/testing/nss_wrapper/APKBUILD?h=3.17-stable&id=94d81ceeb58cff448d489bbcbe9a6d40c9991663
+# https://git.alpinelinux.org/aports/tree/community/nss_wrapper/APKBUILD?h=3.22-stable#n7 ("ppc64le: test case segfaults")
 		$([ "$(apk --print-arch)" != 'ppc64le' ] && echo 'nss_wrapper') \
 	; \
 	apk del --no-network .build-deps; \
@@ -202,28 +198,18 @@ RUN install --verbose --directory --owner postgres --group postgres --mode 1777 
 VOLUME /var/lib/postgresql/data
 
 COPY docker-entrypoint.sh docker-ensure-initdb.sh /usr/local/bin/
-
 RUN ln -sT docker-ensure-initdb.sh /usr/local/bin/docker-enforce-initdb.sh
-
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 # We set the default STOPSIGNAL to SIGINT, which corresponds to what PostgreSQL
 # calls "Fast Shutdown mode" wherein new connections are disallowed and any
 # in-progress transactions are aborted, allowing PostgreSQL to stop cleanly and
-# flush tables to disk, which is the best compromise available to avoid data
-# corruption.
+# flush tables to disk.
 #
-# Users who know their applications do not keep open long-lived idle connections
-# may way to use a value of SIGTERM instead, which corresponds to "Smart
-# Shutdown mode" in which any existing sessions are allowed to finish and the
-# server stops when all sessions are terminated.
-#
-# See https://www.postgresql.org/docs/12/server-shutdown.html for more details
+# See https://www.postgresql.org/docs/current/server-shutdown.html for more details
 # about available PostgreSQL server shutdown signals.
 #
-# See also https://www.postgresql.org/docs/12/server-start.html for further
+# See also https://www.postgresql.org/docs/current/server-start.html for further
 # justification of this as the default value, namely that the example (and
 # shipped) systemd service files use the "Fast Shutdown mode" for service
 # termination.
@@ -233,12 +219,11 @@ STOPSIGNAL SIGINT
 # An additional setting that is recommended for all users regardless of this
 # value is the runtime "--stop-timeout" (or your orchestrator/runtime's
 # equivalent) for controlling how long to wait between sending the defined
-# STOPSIGNAL and sending SIGKILL (which is likely to cause data corruption).
+# STOPSIGNAL and sending SIGKILL.
 #
 # The default in most runtimes (such as Docker) is 10 seconds, and the
-# documentation at https://www.postgresql.org/docs/12/server-start.html notes
+# documentation at https://www.postgresql.org/docs/current/server-start.html notes
 # that even 90 seconds may not be long enough in many instances.
 
 EXPOSE 5432
-
 CMD ["postgres"]
